@@ -68,10 +68,11 @@ groups() ->
        dollar_topics_test]},
     {mqttv5, [non_parallel_tests],
       [basic_test_v5,
-       retain_as_publish_test]}].
+       retain_as_publish_test,
+       enhanced_auth]}].
 
 init_per_suite(Config) ->
-    emqx_ct_helpers:start_apps([emqx_auth_username]),
+    emqx_ct_helpers:start_apps([emqx_auth_username, emqx_sasl]),
     Config.
 
 end_per_suite(_Config) ->
@@ -517,3 +518,31 @@ retain_as_publish_test(_) ->
 
     ok = emqtt:disconnect(Pub),
     clean_retained(Topic).
+
+enhanced_auth(_) ->
+    Username = <<"username">>,
+    Password = <<"password">>,
+    Salt = <<"emqx">>,
+    AuthMethod = <<"SCRAM-SHA-1">>,
+    ok = emqx_sasl_scram:add(Username, Password, Salt),
+
+    {ok, Clinet1} = emqtt:start_link([{clean_start, true},
+                                     {proto_ver, v5},
+                                     {enhanced_auth, #{username => Username,
+                                                       password => Password,
+                                                       salt => Salt,
+                                                       auth_method => AuthMethod}},
+                                     {connect_timeout, 6000}]),
+    {ok, _} = emqtt:connect(Clinet1),
+    ok = emqtt:disconnect(Clinet1),
+
+    AuthData = emqx_sasl_scram:make_client_first(Username),
+
+    {ok, Clinet2} = emqtt:start_link([{clean_start, true},
+                                     {proto_ver, v5},
+                                     {properties, #{'Authentication-Method' => AuthMethod,
+                                                    'Authentication-Data' => AuthData}},
+                                     {enhanced_auth, #{password => Password}},
+                                     {connect_timeout, 6000}]),
+    {ok, _} = emqtt:connect(Clinet2),
+    ok = emqtt:disconnect(Clinet2).

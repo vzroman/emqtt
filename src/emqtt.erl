@@ -189,6 +189,8 @@
           will_flag       :: boolean(),
           will_msg        :: mqtt_msg(),
           properties      :: properties(),
+          enhanced_auth   :: map(),
+          auth_cache      :: map(),
           pending_calls   :: list(),
           subscriptions   :: map(),
           max_inflight    :: infinity | pos_integer(),
@@ -476,6 +478,8 @@ init([Options]) ->
                                  inflight        = #{},
                                  awaiting_rel    = #{},
                                  properties      = #{},
+                                 enhanced_auth   = #{},
+                                 auth_cache      = #{},
                                  auto_ack        = true,
                                  ack_timeout     = ?DEFAULT_ACK_TIMEOUT,
                                  retry_interval  = ?DEFAULT_RETRY_INTERVAL,
@@ -575,6 +579,10 @@ init([{force_ping, ForcePing} | Opts], State) when is_boolean(ForcePing) ->
     init(Opts, State#state{force_ping = ForcePing});
 init([{properties, Properties} | Opts], State = #state{properties = InitProps}) ->
     init(Opts, State#state{properties = maps:merge(InitProps, Properties)});
+init([{enhanced_auth, EnhancedAuth} | Opts], State = #state{enhanced_auth = InitEnhancedAuth}) ->
+    init(Opts, State#state{enhanced_auth = maps:merge(InitEnhancedAuth, EnhancedAuth)});
+init([{auth_cache, AuthCache} | Opts], State = #state{auth_cache = InitAuthCache}) ->
+    init(Opts, State#state{auth_cache = maps:merge(InitAuthCache, AuthCache)});
 init([{max_inflight, infinity} | Opts], State) ->
     init(Opts, State#state{max_inflight = infinity,
                            inflight     = #{}});
@@ -621,12 +629,17 @@ callback_mode() -> state_functions.
 
 initialized({call, From}, {connect, ConnMod}, State = #state{sock_opts = SockOpts,
                                                              connect_timeout = Timeout}) ->
-    case sock_connect(ConnMod, hosts(State), SockOpts, Timeout) of
-        {ok, Sock} ->
-            case mqtt_connect(run_sock(State#state{conn_mod = ConnMod, socket = Sock})) of
-                {ok, NewState} ->
-                    {next_state, waiting_for_connack,
-                     add_call(new_call(connect, From), NewState), [Timeout]};
+    case init_enhanced_auth(State) of
+        {ok, NState} ->
+            case sock_connect(ConnMod, hosts(NState), SockOpts, Timeout) of
+                {ok, Sock} ->
+                    case mqtt_connect(run_sock(NState#state{conn_mod = ConnMod, socket = Sock})) of
+                        {ok, NewState} ->
+                            {next_state, waiting_for_connack,
+                            add_call(new_call(connect, From), NewState), [Timeout]};
+                        Error = {error, Reason} ->
+                            {stop_and_reply, Reason, [{reply, From, Error}]}
+                    end;
                 Error = {error, Reason} ->
                     {stop_and_reply, Reason, [{reply, From, Error}]}
             end;
@@ -637,6 +650,35 @@ initialized({call, From}, {connect, ConnMod}, State = #state{sock_opts = SockOpt
 initialized(EventType, EventContent, State) ->
     handle_event(EventType, EventContent, initialized, State).
 
+init_enhanced_auth(State = #state{properties = #{'Authentication-Method' := AuthMethod} = Properties,
+                                  enhanced_auth = EnhancedAuth,
+                                  auth_cache = AuthCache}) ->
+    case maps:get('Authentication-Data', Properties, undefined) of
+        AuthData when is_binary(AuthData) ->
+            case AuthMethod of
+                <<"SCRAM-SHA-1">> ->
+                    {ok, State#state{auth_cache = maps:merge(AuthCache, #{client_first => AuthData,
+                                                                          password => maps:get(password, EnhancedAuth, undefined)})}};
+                _ -> {error, unsupported_auth_method}
+            end;
+        _ -> {error, unsupported_auth_data}
+    end;
+
+init_enhanced_auth(State = #state{properties = Properties,
+                                  enhanced_auth = #{auth_method := AuthMethod} = EnhancedAuth,
+                                  auth_cache = AuthCache}) ->
+    case AuthMethod of
+        <<"SCRAM-SHA-1">> ->
+            AuthData = emqx_sasl_scram:make_client_first(maps:get(username, EnhancedAuth, undefined)),
+            {ok, State#state{properties = maps:merge(Properties, #{'Authentication-Method' => AuthMethod,
+                                                                   'Authentication-Data' => AuthData}),
+                             auth_cache = maps:merge(AuthCache, #{client_first => AuthData,
+                                                                  password => maps:get(password, EnhancedAuth, undefined)})}};
+        _ -> {error, unsupported_auth_method}
+    end;
+
+init_enhanced_auth(State) -> {ok, State}.
+        
 mqtt_connect(State = #state{clientid    = ClientId,
                             clean_start = CleanStart,
                             bridge_mode = IsBridge,
@@ -666,6 +708,50 @@ mqtt_connect(State = #state{clientid    = ClientId,
                                  will_payload = WillPayload,
                                  username     = Username,
                                  password     = Password}), State).
+
+waiting_for_connack(cast, _Packet = ?AUTH_PACKET(?RC_CONTINUE_AUTHENTICATION, 
+                                                #{'Authentication-Method' := <<"SCRAM-SHA-1">>,
+                                                  'Authentication-Data' := AuthData}),
+                    State = #state{proto_ver = ?MQTT_PROTO_V5,
+                                   auth_cache = AuthCache,
+                                   properties = Properties}) ->
+    case emqx_sasl:check(<<"SCRAM-SHA-1">>, AuthData, AuthCache) of
+        {ok, {continue, NAuthData, NAuthCache}} ->
+            NPacket = ?AUTH_PACKET(?RC_CONTINUE_AUTHENTICATION, #{'Authentication-Method' => <<"SCRAM-SHA-1">>,
+                                                                'Authentication-Data' => NAuthData}),
+            case send(NPacket, State#state{auth_cache = NAuthCache}) of
+                {ok, NState} ->
+                    {keep_state, NState#state{properties = maps:merge(Properties, #{'Authentication-Method' => NAuthData})}};
+                {error, Reason} ->
+                    {stop, Reason}
+            end;
+        Reason -> {stop, Reason}
+    end;
+
+waiting_for_connack(cast, _Packet = ?CONNACK_PACKET(?RC_SUCCESS,
+                                                   SessPresent,
+                                                   Properties = #{'Authentication-Method' := <<"SCRAM-SHA-1">>,
+                                                                  'Authentication-Data' := AuthData}),
+                    State = #state{properties = AllProps,
+                                   clientid   = ClientId,
+                                   auth_cache = AuthCache}) ->
+    case take_call(connect, State) of
+        {value, #call{from = From}, State1} ->
+            case emqx_sasl:check(<<"SCRAM-SHA-1">>, AuthData, AuthCache) of
+                {ok, _} -> 
+                    AllProps1 = maps:merge(AllProps, Properties),
+                    Reply = {ok, Properties},
+                    State2 = State1#state{clientid = assign_id(ClientId, AllProps1),
+                                          properties = AllProps1,
+                                          session_present = SessPresent,
+                                          auth_cache = #{}},
+                    {next_state, connected, ensure_keepalive_timer(State2),
+                        [{reply, From, Reply}]};
+                _ -> {stop, bad_connack}
+            end;
+        false ->
+            {stop, bad_connack}
+    end;
 
 waiting_for_connack(cast, ?CONNACK_PACKET(?RC_SUCCESS,
                                           SessPresent,
