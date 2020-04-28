@@ -43,6 +43,9 @@
         , publish/5
         , unsubscribe/2
         , unsubscribe/3
+        , reauthentication/1
+        , reauthentication/2
+        , reauthentication/3
         ]).
 
 %% Puback...
@@ -390,6 +393,18 @@ disconnect(Client, ReasonCode) ->
 disconnect(Client, ReasonCode, Properties) ->
     gen_statem:call(Client, {disconnect, ReasonCode, Properties}).
 
+reauthentication(Client) ->
+    reauthentication(Client, <<>>, #{}).
+
+reauthentication(Client, AuthData) when is_binary(AuthData) ->
+    reauthentication(Client, AuthData, #{});
+
+reauthentication(Client, EnhancedAuth) when is_map(EnhancedAuth) ->
+    reauthentication(Client, <<>>, EnhancedAuth).
+
+reauthentication(Client, AuthData, EnhancedAuth) ->
+    gen_statem:call(Client, {reauthentication, AuthData, EnhancedAuth}).
+
 %%--------------------------------------------------------------------
 %% For test cases
 %%--------------------------------------------------------------------
@@ -658,7 +673,8 @@ init_enhanced_auth(State = #state{properties = #{'Authentication-Method' := Auth
             case AuthMethod of
                 <<"SCRAM-SHA-1">> ->
                     {ok, State#state{auth_cache = maps:merge(AuthCache, #{client_first => AuthData,
-                                                                          password => maps:get(password, EnhancedAuth, undefined)})}};
+                                                                          password => maps:get(password, EnhancedAuth, undefined)}),
+                                     enhanced_auth = maps:merge(EnhancedAuth, #{auth_method => AuthMethod})}};
                 _ -> {error, unsupported_auth_method}
             end;
         _ -> {error, unsupported_auth_data}
@@ -889,6 +905,32 @@ connected({call, From}, {disconnect, ReasonCode, Properties}, State) ->
             {stop_and_reply, Reason, [{reply, From, Error}]}
     end;
 
+connected({call, From}, {reauthentication, AuthData, EnhancedAuth}, State = #state{proto_ver = ?MQTT_PROTO_V5,
+                                                                                    properties = #{'Authentication-Method' := AuthMethod},
+                                                                                    enhanced_auth = OldEnhancedAuth}) ->
+    case AuthMethod of
+        <<"SCRAM-SHA-1">> ->
+            NEnhancedAuth = maps:merge(OldEnhancedAuth, EnhancedAuth),
+            NAuthData = case AuthData of
+                <<>> -> emqx_sasl_scram:make_client_first(maps:get(username, NEnhancedAuth, undefined));
+                AuthData when is_binary(AuthData) -> AuthData;
+                _ -> {stop_and_reply, unsupported_auth_data, [{reply, From, unsupported_auth_data}]}
+            end,
+            case send(?AUTH_PACKET(?RC_RE_AUTHENTICATE, #{'Authentication-Method' => <<"SCRAM-SHA-1">>,
+                                                          'Authentication-Data' => NAuthData}), State) of
+                {ok, NewState} ->
+                    {keep_state, NewState#state{enhanced_auth = NEnhancedAuth,
+                                                auth_cache = #{client_first => NAuthData,
+                                                               password => maps:get(password, NEnhancedAuth, undefined)}}, 
+                                                [{reply, From, ok}]};
+                Error = {error, Reason} ->
+                    {stop_and_reply, Reason, [{reply, From, Error}]}                                        
+            end;
+        _ ->
+            {stop_and_reply, unsupported_auth_method, [{reply, From, unsupported_auth_method}]}
+    end;
+
+
 connected(cast, {puback, PacketId, ReasonCode, Properties}, State) ->
     send_puback(?PUBACK_PACKET(PacketId, ReasonCode, Properties), State);
 
@@ -985,6 +1027,37 @@ connected(cast, ?PACKET(?PINGRESP), State) ->
 
 connected(cast, ?DISCONNECT_PACKET(ReasonCode, Properties), State) ->
     {stop, {disconnected, ReasonCode, Properties}, State};
+
+connected(cast, ?AUTH_PACKET(?RC_CONTINUE_AUTHENTICATION, #{'Authentication-Method' := <<"SCRAM-SHA-1">>,
+                                                            'Authentication-Data' := AuthData}),
+                    State = #state{proto_ver = ?MQTT_PROTO_V5,
+                                   auth_cache = AuthCache,
+                                   properties = Properties}) ->
+    case emqx_sasl:check(<<"SCRAM-SHA-1">>, AuthData, AuthCache) of
+        {ok, {continue, NAuthData, NAuthCache}} ->
+            NPacket = ?AUTH_PACKET(?RC_CONTINUE_AUTHENTICATION, #{'Authentication-Method' => <<"SCRAM-SHA-1">>,
+                                                                  'Authentication-Data' => NAuthData}),
+            case send(NPacket, State) of
+                {ok, NState} ->
+                    {keep_state, NState#state{properties = maps:merge(Properties, #{'Authentication-Data' => NAuthData}),
+                                              auth_cache = NAuthCache}};
+                {error, Reason} ->
+                    {stop, Reason}
+            end;
+        Reason -> {stop, Reason}
+    end;
+
+connected(cast, ?AUTH_PACKET(?RC_SUCCESS, #{'Authentication-Method' := <<"SCRAM-SHA-1">>,
+                                            'Authentication-Data' := AuthData}),
+                    State = #state{proto_ver = ?MQTT_PROTO_V5,
+                                   auth_cache = AuthCache,
+                                   properties = Properties}) ->
+    case emqx_sasl:check(<<"SCRAM-SHA-1">>, AuthData, AuthCache) of
+        {ok, {ok, NAuthData, NAuthCache}} ->
+            {keep_state, State#state{properties = maps:merge(Properties, #{'Authentication-Data' => NAuthData}),
+                                     auth_cache = NAuthCache}};
+        Reason -> {stop, Reason}
+    end;
 
 connected(info, {timeout, _TRef, keepalive}, State = #state{force_ping = true}) ->
     case send(?PACKET(?PINGREQ), State) of
