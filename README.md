@@ -369,7 +369,8 @@ option() = {name, atom()} |
            {auto_ack, boolean()} |
            {ack_timeout, pos_integer()} |
            {force_ping, boolean()} |
-           {properties, properties()}
+           {properties, properties()} |
+           {enhanced_auth, enhanced_auth()}
 ```
 
 <span id="client">**client()**</span>
@@ -468,6 +469,12 @@ pubopt() = {retain, boolean()} |
 
 ```
 reason_code() = 0..16#FF
+```
+
+<span id="enhanced_auth">**enhanced_auth()**</span>
+
+```
+enhanced_auth() = #{}
 ```
 
 ### Exports
@@ -595,6 +602,12 @@ If false (the default), if any other packet is sent during keep alive interval, 
 `{properties, Properties}`
 
 Properties of CONNECT packet.
+
+`{enhanced_auth, map()}`
+
+The data required to enhance authentication
+
+When using enhanced authentication, you can either specify the authentication method and authentication data through `Authentication-Method` and` Authentication-Data` in `properties`, or you can specify it in` enhanced_auth`. The current authentication method only supports `SCRAM-SHA-1`
 
 **emqtt:connect(Client) -> {ok, Properties} | {error, Reason}**
 
@@ -765,6 +778,22 @@ Send a `PUBREL` packet to the MQTT server. `PacketId`, `ReasonCode` and `Propert
 &ensp;&ensp;&ensp;&ensp;Same as `emqtt:puback/2, 3, 4`.
 
 Send a `PUBCOMP` packet to the MQTT server. `PacketId`, `ReasonCode` and `Properties` specify packet identifier, reason code and properties for `PUBCOMP` packet.
+
+**emqtt:reauthentication(Client) -> ok**
+
+**emqtt:reauthentication(Client, AuthData) -> ok**
+
+**emqtt:reauthentication(Client, AuthData, EnhancedAuth) -> ok**
+
+&ensp;&ensp;**Types**
+
+&ensp;&ensp;&ensp;&ensp;**Client = [client()](#client)**
+
+&ensp;&ensp;&ensp;&ensp;**AuthData = [Authentication-Data](#properties)**
+
+&ensp;&ensp;&ensp;&ensp;**EnhancedAuth = [enhanced_auth](#enhanced_auth)**
+
+Send a `AUTH` packet to the MQTT server. The authentication method uses the `Authentication-Method` in the Properties of `CONNECT` packet. `AuthData` is a binary type that specifies the new authentication data and can be put into `EnhancedAuth` if there is data needed for other authentication
 
 **emqtt:subscriptions(Client) -> Subscriptions**
 
