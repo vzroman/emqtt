@@ -474,7 +474,10 @@ reason_code() = 0..16#FF
 <span id="enhanced_auth">**enhanced_auth()**</span>
 
 ```
-enhanced_auth() = #{}
+enhanced_auth() = #{method => binary(), context => any()} | 
+                  #{method => binary(), context => any(), function => fun((Method :: binary(), Data :: binary() | undefined, Context :: any(), State :: apply | check) -> 
+                                                                          {Result :: ok | continue, NData :: binary(), NConetxt :: any()} | 
+                                                                          {error, Reason :: atom()})}
 ```
 
 ### Exports
@@ -603,11 +606,9 @@ If false (the default), if any other packet is sent during keep alive interval, 
 
 Properties of CONNECT packet.
 
-`{enhanced_auth, map()}`
+`{enhanced_auth, EnhancedAuth}`
 
 The data required to enhance authentication
-
-When using enhanced authentication, you can either specify the authentication method and authentication data through `Authentication-Method` and` Authentication-Data` in `properties`, or you can specify it in` enhanced_auth`. The current authentication method only supports `SCRAM-SHA-1`
 
 **emqtt:connect(Client) -> {ok, Properties} | {error, Reason}**
 
@@ -779,21 +780,15 @@ Send a `PUBREL` packet to the MQTT server. `PacketId`, `ReasonCode` and `Propert
 
 Send a `PUBCOMP` packet to the MQTT server. `PacketId`, `ReasonCode` and `Properties` specify packet identifier, reason code and properties for `PUBCOMP` packet.
 
-**emqtt:reauthentication(Client) -> ok**
-
-**emqtt:reauthentication(Client, AuthData) -> ok**
-
-**emqtt:reauthentication(Client, AuthData, EnhancedAuth) -> ok**
+**emqtt:reauthentication(Client, EnhancedAuth) -> ok**
 
 &ensp;&ensp;**Types**
 
 &ensp;&ensp;&ensp;&ensp;**Client = [client()](#client)**
 
-&ensp;&ensp;&ensp;&ensp;**AuthData = [Authentication-Data](#properties)**
-
 &ensp;&ensp;&ensp;&ensp;**EnhancedAuth = [enhanced_auth](#enhanced_auth)**
 
-Send a `AUTH` packet to the MQTT server. The authentication method uses the `Authentication-Method` in the Properties of `CONNECT` packet. `AuthData` is a binary type that specifies the new authentication data and can be put into `EnhancedAuth` if there is data needed for other authentication
+Send a `AUTH` packet to the MQTT server.
 
 **emqtt:subscriptions(Client) -> Subscriptions**
 
