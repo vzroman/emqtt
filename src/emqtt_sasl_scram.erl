@@ -26,8 +26,8 @@
 
 check(Data, Context) ->
     case maps:get(next_step, Context, undefined) of
-        _ -> check_server_first(Data, Context);
-        check_server_final -> check_server_final(Data, Context)
+        check_server_final -> check_server_final(Data, Context);
+        _ -> check_server_first(Data, Context)
     end.
 
 make_client_first(Context = #{username := Username}) ->
@@ -103,10 +103,6 @@ without_header(<<"n,,", ClientFirstWithoutHeader/binary>>) ->
     ClientFirstWithoutHeader;
 without_header(<<GS2CbindFlag:1/binary, _/binary>>) ->
     error({unsupported_gs2_cbind_flag, binary_to_atom(GS2CbindFlag, utf8)}).
-
-without_proof(ClientFinal) ->
-    [ClientFinalWithoutProof | _] = binary:split(ClientFinal, <<",p=">>, [global, trim_all]),
-    ClientFinalWithoutProof.
 
 parse(Message) ->
     Attributes = binary:split(Message, <<$,>>, [global, trim_all]),
