@@ -9,13 +9,10 @@
         , supported/0]).
 
 check(<<"SCRAM-SHA-1">>, _Data, Context, apply) ->
-    emqtt_sasl_scram:make_client_first(Context);
+    Data = esasl_app:apply(<<"SCRAM-SHA-1">>, Context),
+    {ok, Data, maps:merge(Context, #{client_first => Data})};
 check(<<"SCRAM-SHA-1">>, Data, Context, check) ->
-    try
-        emqtt_sasl_scram:check(Data, Context)
-    catch 
-        _ ->  {error, authentication_failed}
-    end;
+    esasl_app:check(<<"SCRAM-SHA-1">>, Data, Context);
 check(_Method, _Data, _Context, _State) ->
     {error, authentication_failed}.
 
