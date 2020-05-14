@@ -14,17 +14,17 @@ check(AuthState = #{method := <<"SCRAM-SHA-1">>,
     Data = esasl:apply(<<"SCRAM-SHA-1">>, Params),
     AuthContext = maps:merge(Params, #{client_first => Data}),
     {ok, Data, maps:merge(AuthState, #{stage => continue,
-                                       auth_context => AuthContext})};
+                                       context => AuthContext})};
 
 check(AuthState = #{method := <<"SCRAM-SHA-1">>,
                     stage := continue,
                     latest_server_data := ServerAuthData,
-                    auth_context := AuthContext}) ->
+                    context := AuthContext}) ->
     case  esasl:check_server_data(<<"SCRAM-SHA-1">>, ServerAuthData, AuthContext) of
         {continue, Data, NAuthContext} ->
-            {ok, Data, maps:merge(AuthState, #{stage => continue, auth_context => NAuthContext})};
+            {ok, Data, maps:merge(AuthState, #{stage => continue, context => NAuthContext})};
         {ok, <<>>, _} ->
-            {ok, maps:merge(AuthState, #{stage => initialized, auth_context => #{}})}
+            {ok, maps:merge(AuthState, #{stage => initialized, context => #{}})}
     end;
 
 check(_AuthState) ->
