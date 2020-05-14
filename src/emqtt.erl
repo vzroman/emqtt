@@ -168,14 +168,17 @@
 
 -type(params() :: any()).
 
--type(auth_state() ::
-    #{method => method(), params => params(), stage => initialized | atom(), latest_server_data => undefined | binary(), any() => any()}).
+-type(auth_state() :: #{method => method(),
+                        params => params(),
+                        stage => initialized | atom(),
+                        latest_server_data => undefined | binary(),
+                        any() => any()}).
 
--type(enhanced_auth() :: 
-    #{method => method(), params => params()} |
-    #{method => method(), params => params(),
-      function => fun((AuthState :: auth_state()) ->
-                       {ok, NAuthState :: auth_state()} | {ok, NAuthData :: binary(), NAuthState :: auth_state()})}).
+-type(auth_function() :: fun((AuthState :: auth_state()) -> {ok, NAuthState :: auth_state()} 
+                                                          | {ok, NAuthData :: binary(), NAuthState :: auth_state()})).
+
+-type(enhanced_auth() :: #{method => method(), params => params()} 
+                       | #{method => method(), params => params(), function => auth_function()}).
 
 -opaque(mqtt_msg() :: #mqtt_msg{}).
 
