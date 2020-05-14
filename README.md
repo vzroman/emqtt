@@ -471,13 +471,31 @@ pubopt() = {retain, boolean()} |
 reason_code() = 0..16#FF
 ```
 
+<span id="method">**method()**</span>
+
+```
+method() = binary()
+```
+
+<span id="params">**params()**</span>
+
+```
+params() = any()
+```
+
+<span id="auth_state">**auth_state()**</span>
+
+```
+auth_state() = #{method => method(), params => params(), stage => initialized | atom(), latest_server_data => undefined | binary(), any() => any()}).
+```
+
 <span id="enhanced_auth">**enhanced_auth()**</span>
 
 ```
-enhanced_auth() = #{method => binary(), context => any()} | 
-                  #{method => binary(), context => any(), function => fun((Method :: binary(), Data :: binary() | undefined, Context :: any(), State :: apply | check) -> 
-                                                                          {Result :: ok | continue, NData :: binary(), NConetxt :: any()} | 
-                                                                          {error, Reason :: atom()})}
+enhanced_auth() = #{method => method(), params => params()} |
+                  #{method => method(), params => params(),
+                  function => fun((AuthState :: auth_state()) ->
+                       {ok, NAuthState :: auth_state()} | {ok, NAuthData :: binary(), NAuthState :: auth_state()})}
 ```
 
 ### Exports
