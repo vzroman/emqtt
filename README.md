@@ -798,6 +798,8 @@ Send a `PUBREL` packet to the MQTT server. `PacketId`, `ReasonCode` and `Propert
 
 Send a `PUBCOMP` packet to the MQTT server. `PacketId`, `ReasonCode` and `Properties` specify packet identifier, reason code and properties for `PUBCOMP` packet.
 
+**emqtt:reauthentication(Client) -> ok**
+
 **emqtt:reauthentication(Client, EnhancedAuth) -> ok**
 
 &ensp;&ensp;**Types**

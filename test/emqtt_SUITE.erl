@@ -546,9 +546,7 @@ enhanced_auth(_) ->
     {ok, _} = emqtt:connect(Client1),
 
     timer:sleep(200),
-    ok = emqtt:reauthentication(Client1, #{params => #{username => Username,
-                                                       password => Password,
-                                                       salt => Salt}}),
+    ok = emqtt:reauthentication(Client1),
 
     timer:sleep(200),
     ErrorFun = fun (_State) -> {error, authentication_failed} end,

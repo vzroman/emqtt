@@ -43,6 +43,7 @@
         , publish/5
         , unsubscribe/2
         , unsubscribe/3
+        , reauthentication/1
         , reauthentication/2
         ]).
 
@@ -403,6 +404,9 @@ disconnect(Client, ReasonCode) ->
 -spec(disconnect(client(), reason_code(), properties()) -> ok).
 disconnect(Client, ReasonCode, Properties) ->
     gen_statem:call(Client, {disconnect, ReasonCode, Properties}).
+
+reauthentication(Client) ->
+    reauthentication(Client, #{}).
 
 reauthentication(Client, EnhancedAuth) when is_map(EnhancedAuth) ->
     gen_statem:call(Client, {reauthentication, EnhancedAuth}).
