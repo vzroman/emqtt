@@ -163,7 +163,7 @@
 
 -type(client() :: pid() | atom()).
 
--type(method() :: atom()).
+-type(method() :: binary()).
 
 -type(params() :: any()).
 
@@ -171,8 +171,8 @@
     #{method => method(), params => params(), stage => initialized | atom(), latest_server_data => undefined | binary(), any() => any()}).
 
 -type(enhanced_auth() :: 
-    #{method => binary(), params => any()} |
-    #{method => binary(), params => any(),
+    #{method => method(), params => params()} |
+    #{method => method(), params => params(),
       function => fun((AuthState :: auth_state()) ->
                        {ok, NAuthState :: auth_state()} | {ok, NAuthData :: binary(), NAuthState :: auth_state()})}).
 
