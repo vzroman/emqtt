@@ -483,10 +483,10 @@ method() = binary()
 params() = any()
 ```
 
-<span id="auth_state">**auth_state()**</span>
+<span id="enhanced_auth_state">**enhanced_auth_state()**</span>
 
 ```
-auth_state() = #{method => method(), params => params(), stage => initialized | atom(), latest_server_data => undefined | binary(), any() => any()}).
+enhanced_auth_state() = #{method => method(), params => params(), stage => initialized | atom(), latest_server_data => undefined | binary(), any() => any()}).
 ```
 
 <span id="enhanced_auth">**enhanced_auth()**</span>
@@ -494,8 +494,8 @@ auth_state() = #{method => method(), params => params(), stage => initialized | 
 ```
 enhanced_auth() = #{method => method(), params => params()} |
                   #{method => method(), params => params(),
-                  function => fun((AuthState :: auth_state()) ->
-                       {ok, NAuthState :: auth_state()} | {ok, NAuthData :: binary(), NAuthState :: auth_state()})}
+                  function => fun((EnhancedAuthState :: enhanced_auth_state()) ->
+                       {ok, NEnhancedAuthState :: enhanced_auth_state()} | {ok, NAuthData :: binary(), NEnhancedAuthState :: enhanced_auth_state()})}
 ```
 
 ### Exports
