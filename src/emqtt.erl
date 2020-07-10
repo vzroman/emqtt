@@ -25,7 +25,6 @@
         ]).
 
 -export([ connect/1
-        , ws_connect/1
         , disconnect/1
         , disconnect/2
         , disconnect/3
@@ -156,7 +155,7 @@
 -type(subscribe_ret() ::
       {ok, properties(), [reason_code()]} | {error, term()}).
 
--type(conn_mod() :: emqtt_sock | emqtt_ws).
+-type(conn_mod() :: emqtt_sock ).
 
 -type(client() :: pid() | atom()).
 
@@ -171,7 +170,7 @@
           hosts           :: [{host(), inet:port_number()}],
           conn_mod        :: conn_mod(),
           socket          :: inet:socket() | pid(),
-          sock_opts       :: [emqtt_sock:option()|emqtt_ws:option()],
+          sock_opts       :: [emqtt_sock:option()],
           connect_timeout :: pos_integer(),
           bridge_mode     :: boolean(),
           clientid        :: binary(),
@@ -255,9 +254,6 @@ with_owner(Options) ->
 -spec(connect(client()) -> {ok, properties()} | {error, term()}).
 connect(Client) ->
     call(Client, {connect, emqtt_sock}).
-
-ws_connect(Client) ->
-    call(Client, {connect, emqtt_ws}).
 
 %% @private
 call(Client, Req) ->
